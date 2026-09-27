@@ -1,0 +1,21 @@
+# Dataset preparation configuration.
+manifest: data/manifests/dataset_manifest.csv
+split_dir: data/manifests/splits
+seed: 42
+train_fraction: 0.60
+validation_fraction: 0.20
+test_fraction: 0.20
+
+anatomy_labels:
+  - spine
+  - left_hip
+  - right_hip
+
+quality_labels:
+  spine:
+    - spine_layout
+    - spine_axis
+    - spine_artifact
+  hip:
+    - hip_position_rotation
+    - hip_roi

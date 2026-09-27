@@ -42,3 +42,38 @@ class CommentParser:
     def is_ambiguous(self, text: str | None) -> bool:
         normalized = self.normalize(text)
         return any(item in normalized for item in self.ambiguous)
+
+COMMENT_TAGS = {
+    "сколиоз": {"SPINE_SCOLIOSIS"},
+    "перелом": {"FRACTURE"},
+    "правое бедро эндопротезирования": {"RIGHT_HIP_PROSTHESIS", "HIP_PROSTHESIS"},
+    "эндопротезирования ТБС": {"HIP_PROSTHESIS"},
+    "хороший пример отклонения оси при КТ п-ка": {"SPINE_AXIS_DEVIATION"},
+    "l6, люмбализация": {"SPINE_L6_LUMBALIZATION"},
+    "отклонение оси, нет малых вертелов": {
+        "SPINE_AXIS_DEVIATION",
+        "HIP_LESSER_TROCHANTER_NOT_VISIBLE",
+    },
+    "хороший пример ротации": {"HIP_ROTATION"},
+}
+
+
+def normalize_comment(comment: object) -> str:
+    if comment is None:
+        return ""
+    return str(comment).strip().lower()
+
+
+def parse_comment(comment: object) -> tuple[set[str], bool]:
+    """Return auxiliary tags and whether the comment is ambiguous."""
+    normalized = normalize_comment(comment)
+    if not normalized:
+        return set(), False
+
+    tags = set()
+    for phrase, phrase_tags in COMMENT_TAGS.items():
+        if phrase in normalized:
+            tags.update(phrase_tags)
+
+    ambiguous = "требует внимание" in normalized
+    return tags, ambiguous

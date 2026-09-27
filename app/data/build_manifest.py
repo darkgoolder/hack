@@ -299,15 +299,26 @@ def build_records(dataset_root: Path, labels: dict[str, dict[str, Any]], comment
     return records, warnings
 
 
+CANONICAL_COLUMN_NAMES = {
+    "anatomy": "anatomical_region",
+    "expert_comment": "study_comments",
+}
+
+
 def write_manifest(records: list[ImageRecord], output_csv: Path) -> None:
     output_csv.parent.mkdir(parents=True, exist_ok=True)
     if not records:
         raise ValueError("No records to write")
-    fieldnames = list(records[0].to_dict().keys())
+
+    rows = [
+        {CANONICAL_COLUMN_NAMES.get(k, k): v for k, v in record.to_dict().items()}
+        for record in records
+    ]
+    fieldnames = list(rows[0].keys())
     with output_csv.open("w", newline="", encoding="utf-8-sig") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
-        writer.writerows(record.to_dict() for record in records)
+        writer.writerows(rows)
 
 
 def main() -> None:
