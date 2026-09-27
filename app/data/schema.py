@@ -1,73 +1,73 @@
-from __future__ import annotations
-
-from dataclasses import dataclass, field
+from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
-
-@dataclass(slots=True)
+@dataclass
 class ImageRecord:
+    """One DICOM file + expert labels + DICOM metadata.
+
+    Mirrors the schema expected by ``split_dataset.py``/``schema.py``.
+    """
     folder_id: str
     image_path: Path
     file_name: str
     anatomy: str
-    laterality: str | None
-    projection: str | None
-    study_uid: str | None
-    series_uid: str | None
-    sop_instance_uid: str | None
-
-    # Expert targets. None means "not applicable / image absent".
+    laterality: str | None = None
+    projection: str | None = None
+    study_uid: str | None = None
+    series_uid: str | None = None
+    sop_instance_uid: str | None = None
     spine_layout: int | None = None
     spine_axis: int | None = None
     spine_artifact: int | None = None
     hip_position_rotation: int | None = None
     hip_roi: int | None = None
-
-    # Derived labels / comments.
     quality_class: int | None = None
     violation_type: str | None = None
     expert_comment: str | None = None
-    auxiliary_tags: list[str] = field(default_factory=list)
-
-    # Audit information.
+    auxiliary_tags: list[str] | None = None
     dicom_readable: bool = True
     error: str | None = None
 
-    def applicable_targets(self) -> dict[str, int | None]:
-        if self.anatomy == "spine":
-            return {
-                "spine_layout": self.spine_layout,
-                "spine_axis": self.spine_axis,
-                "spine_artifact": self.spine_artifact,
-            }
-        if self.anatomy in {"left_hip", "right_hip"}:
-            return {
-                "hip_position_rotation": self.hip_position_rotation,
-                "hip_roi": self.hip_roi,
-            }
-        return {}
-
     def to_dict(self) -> dict[str, Any]:
-        return {
-            "folder_id": self.folder_id,
-            "image_path": str(self.image_path),
-            "file_name": self.file_name,
-            "anatomy": self.anatomy,
-            "laterality": self.laterality,
-            "projection": self.projection,
-            "study_uid": self.study_uid,
-            "series_uid": self.series_uid,
-            "sop_instance_uid": self.sop_instance_uid,
-            "spine_layout": self.spine_layout,
-            "spine_axis": self.spine_axis,
-            "spine_artifact": self.spine_artifact,
-            "hip_position_rotation": self.hip_position_rotation,
-            "hip_roi": self.hip_roi,
-            "quality_class": self.quality_class,
-            "violation_type": self.violation_type,
-            "expert_comment": self.expert_comment,
-            "auxiliary_tags": ";".join(self.auxiliary_tags),
-            "dicom_readable": self.dicom_readable,
-            "error": self.error,
-        }
+        data = asdict(self)
+        # pathlib.Path -> POSIX-строка, чтобы CSV был кроссплатформенным
+        data["image_path"] = str(data["image_path"]).replace("\\", "/")
+        # список тегов -> строка через ';' (удобно для CSV)
+        if isinstance(data.get("auxiliary_tags"), list):
+            data["auxiliary_tags"] = ";".join(data["auxiliary_tags"])
+        return data
+
+# Canonical manifest columns produced/consumed by the project.
+CORE_COLUMNS: Final[tuple[str, ...]] = (
+    "folder_id",
+    "image_path",
+    "anatomical_region",
+    "laterality",
+)
+
+LABEL_COLUMNS: Final[tuple[str, ...]] = (
+    "spine_layout",
+    "spine_axis",
+    "spine_artifact",
+    "hip_position_rotation",
+    "hip_roi",
+)
+
+OPTIONAL_COLUMNS: Final[tuple[str, ...]] = (
+    "study_uid",
+    "series_uid",
+    "sop_instance_uid",
+    "projection",
+    "quality_class",
+    "study_comments",
+    "auxiliary_tags",
+)
+
+ANATOMY_VALUES: Final[set[str]] = {"spine", "left_hip", "right_hip"}
+
+
+@dataclass(frozen=True)
+class SplitRecord:
+    folder_id: str
+    split: str
