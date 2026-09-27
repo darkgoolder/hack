@@ -5,28 +5,25 @@ from pathlib import Path
 import pandas as pd
 
 
-def main() -> None:
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("split_dir", type=Path)
     args = parser.parse_args()
 
-    sets: dict[str, set[str]] = {}
+    sets = {}
     for split in ("train", "val", "test"):
-        path = args.split_dir / f"{split}.csv"
-        df = pd.read_csv(path)
+        df = pd.read_csv(args.split_dir / f"{split}.csv")
         sets[split] = set(df["folder_id"].astype(str))
         print(f"{split}: {len(df)} images, {len(sets[split])} folders")
 
-    intersections = {
-        "train_val": sets["train"] & sets["val"],
-        "train_test": sets["train"] & sets["test"],
-        "val_test": sets["val"] & sets["test"],
-    }
-    for name, values in intersections.items():
-        print(f"{name} overlap: {len(values)}")
-        if values:
-            raise SystemExit(f"LEAKAGE DETECTED: {sorted(values)[:10]}")
+    ok = True
+    for a, b in (("train", "val"), ("train", "test"), ("val", "test")):
+        overlap = sets[a] & sets[b]
+        print(f"{a}_{b} overlap: {len(overlap)}")
+        ok &= not overlap
 
+    if not ok:
+        raise SystemExit("ERROR: folder leakage detected.")
     print("OK: no folder appears in more than one split.")
 
 

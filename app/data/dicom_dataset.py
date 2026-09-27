@@ -3,94 +3,114 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
-import pydicom
+from torchvision.transforms import v2
 
-from app.data.schema import LABEL_COLUMNS
+from app.preprocessing.dicom import dicom_to_tensor
+
+QUALITY_TARGETS = (
+    "spine_layout",
+    "spine_axis",
+    "spine_artifact",
+    "hip_position_rotation",
+    "hip_roi",
+)
 
 
-class DXAImageDataset(Dataset):
-    """PyTorch Dataset for one-DICOM-per-sample training.
+def build_train_transform():
+    # No spatial transforms in the baseline: rotation/orientation and image
+    # margins carry clinical signal and are themselves targets.
+    return v2.Compose([
+        v2.RandomApply(
+            [v2.ColorJitter(brightness=0.08, contrast=0.08)],
+            p=0.5,
+        )
+    ])
 
-    The Dataset does not infer anatomy from file names. It uses the validated manifest
-    labels for supervision and reads only DICOM pixel data at training time.
-    """
 
-    def __init__(self, manifest_csv: str | Path, transform: Any | None = None):
-        self.df = pd.read_csv(manifest_csv).reset_index(drop=True)
-        self.transform = transform
+def build_eval_transform():
+    return v2.Identity()
 
-        required = {"image_path", "anatomical_region", "laterality", "folder_id", *LABEL_COLUMNS}
-        missing = sorted(required - set(self.df.columns))
+
+class DXAQualityDataset(Dataset):
+    def __init__(
+        self,
+        manifest_csv: str | Path,
+        split: str | None = None,
+        image_size: int = 512,
+        training: bool = False,
+        root: str | Path | None = None,
+    ):
+        self.manifest_csv = Path(manifest_csv)
+        self.df = pd.read_csv(self.manifest_csv)
+        self.root = Path(root) if root is not None else None
+
+        if split is not None:
+            if "split" not in self.df.columns:
+                raise ValueError("Manifest does not contain 'split' column.")
+            self.df = self.df[self.df["split"] == split].reset_index(drop=True)
+
+        required = {
+            "folder_id", "image_path", "anatomical_region",
+            "quality_class", *QUALITY_TARGETS,
+        }
+        missing = required - set(self.df.columns)
         if missing:
-            raise ValueError(f"Missing columns in manifest: {missing}")
+            raise ValueError(f"Manifest is missing columns: {sorted(missing)}")
 
-    def __len__(self) -> int:
+        self.image_size = int(image_size)
+        self.transform = build_train_transform() if training else build_eval_transform()
+        self.anatomy_to_index = {"spine": 0, "left_hip": 1, "right_hip": 2}
+
+    def __len__(self):
         return len(self.df)
 
     @staticmethod
-    def _load_dicom(path: Path) -> np.ndarray:
-        ds = pydicom.dcmread(str(path), force=False)
-        if not hasattr(ds, "PixelData"):
-            raise ValueError(f"DICOM has no PixelData: {path}")
-        image = ds.pixel_array.astype(np.float32)
-        if image.ndim != 2:
-            raise ValueError(f"Expected a 2D DXA image, got shape={image.shape} for {path}")
-        if not np.isfinite(image).all():
-            raise ValueError(f"Non-finite pixel values in {path}")
-        return image
+    def _masked_binary(value: Any):
+        if pd.isna(value) or value == "":
+            return 0.0, 0.0
+        value = float(value)
+        if value not in (0.0, 1.0):
+            raise ValueError(f"Binary target must be 0/1/blank, got {value!r}")
+        return value, 1.0
 
-    @staticmethod
-    def _normalize(image: np.ndarray) -> np.ndarray:
-        lo = np.percentile(image, 1.0)
-        hi = np.percentile(image, 99.0)
-        if hi <= lo:
-            return np.zeros_like(image, dtype=np.float32)
-        image = np.clip(image, lo, hi)
-        return ((image - lo) / (hi - lo)).astype(np.float32)
-
-    def __getitem__(self, index: int) -> dict[str, Any]:
+    def __getitem__(self, index):
         row = self.df.iloc[index]
-        path = Path(str(row["image_path"]))
-        image = self._normalize(self._load_dicom(path))
+        image_path = Path(row["image_path"])
+        if self.root is not None and not image_path.is_absolute():
+            image_path = self.root / image_path
+        image, dicom_meta = dicom_to_tensor(image_path, self.image_size)
+        image = self.transform(image)
 
-        # Grayscale is repeated to 3 channels to support standard pretrained backbones.
-        tensor = torch.from_numpy(image).unsqueeze(0)
-        tensor = tensor.repeat(3, 1, 1)
+        anatomy = str(row["anatomical_region"]).strip().lower()
+        if anatomy not in self.anatomy_to_index:
+            raise ValueError(f"Unknown anatomical_region={anatomy!r}")
 
-        if self.transform is not None:
-            tensor = self.transform(tensor)
+        targets, masks = [], []
+        for name in QUALITY_TARGETS:
+            target, mask = self._masked_binary(row[name])
+            targets.append(target)
+            masks.append(mask)
 
-        targets: dict[str, torch.Tensor] = {}
-        for column in LABEL_COLUMNS:
-            value = row[column]
-            # -1 marks a label that is not applicable to this anatomy.
-            targets[column] = torch.tensor(-1.0 if pd.isna(value) else float(value), dtype=torch.float32)
-
-        targets["quality_class"] = torch.tensor(
-            float(self._derive_quality(row)), dtype=torch.float32
-        )
+        overall, overall_mask = self._masked_binary(row["quality_class"])
+        targets.append(overall)
+        masks.append(overall_mask)
 
         return {
-            "image": tensor,
-            "targets": targets,
+            "image": image,
+            "anatomy": torch.tensor(self.anatomy_to_index[anatomy], dtype=torch.long),
+            "targets": torch.tensor(targets, dtype=torch.float32),
+            "target_mask": torch.tensor(masks, dtype=torch.float32),
             "folder_id": str(row["folder_id"]),
-            "image_path": str(path),
-            "anatomical_region": str(row["anatomical_region"]),
-            "laterality": None if pd.isna(row["laterality"]) else str(row["laterality"]),
+            "image_path": str(image_path),
+            "study_uid": str(row.get("study_uid", "")),
+            "sop_instance_uid": str(row.get("sop_instance_uid", "")),
+            "dicom_metadata": {
+                "manufacturer": dicom_meta.manufacturer,
+                "manufacturer_model": dicom_meta.manufacturer_model,
+                "pixel_spacing": dicom_meta.pixel_spacing,
+                "was_multiframe": dicom_meta.was_multiframe,
+            },
         }
-
-    @staticmethod
-    def _derive_quality(row: pd.Series) -> int:
-        anatomy = str(row["anatomical_region"])
-        if anatomy == "spine":
-            values = [row[c] for c in ("spine_layout", "spine_axis", "spine_artifact")]
-        elif anatomy in {"left_hip", "right_hip"}:
-            values = [row[c] for c in ("hip_position_rotation", "hip_roi")]
-        else:
-            raise ValueError(f"Unsupported anatomy: {anatomy}")
-        numeric = [int(v) for v in values if not pd.isna(v)]
-        return int(any(v == 1 for v in numeric)) if numeric else 0

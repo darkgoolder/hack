@@ -71,3 +71,10 @@ ANATOMY_VALUES: Final[set[str]] = {"spine", "left_hip", "right_hip"}
 class SplitRecord:
     folder_id: str
     split: str
+
+
+@dataclass(frozen=True)
+class AnatomyLabels:
+    spine: str = "spine"
+    left_hip: str = "left_hip"
+    right_hip: str = "right_hip"

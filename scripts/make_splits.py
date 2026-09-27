@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-
-from app.data.split_dataset import make_splits
+from app.data.split_dataset import main
+# from app.data.split_dataset import make_splits
 
 
 def main() -> None:
