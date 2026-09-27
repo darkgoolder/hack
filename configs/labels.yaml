@@ -1,0 +1,47 @@
+anatomy:
+  spine:
+    aliases: [spine, позвоночник]
+    targets:
+      - spine_layout
+      - spine_axis
+      - spine_artifact
+  right_hip:
+    aliases: [right_hip, right hip, правое бедро]
+    targets:
+      - hip_position_rotation
+      - hip_roi
+  left_hip:
+    aliases: [left_hip, left hip, левое бедро]
+    targets:
+      - hip_position_rotation
+      - hip_roi
+
+comments:
+  # Только однозначные семантические признаки становятся auxiliary tags.
+  # Общие комментарии вроде "Требует внимание" не превращаются автоматически
+  # в конкретный медицинский target.
+  - pattern: "сколиоз"
+    tags: [SPINE_SCOLIOSIS]
+  - pattern: "отклонение оси"
+    tags: [SPINE_AXIS_DEVIATION]
+  - pattern: "люмбализац"
+    tags: [SPINE_L6_LUMBALIZATION]
+  - pattern: "нет малых вертелов"
+    tags: [HIP_LESSER_TROCHANTER_NOT_VISIBLE]
+  - pattern: "ротаци"
+    tags: [HIP_ROTATION]
+  - pattern: "перелом"
+    tags: [FRACTURE]
+  - pattern: "правое бедро эндопротезирования"
+    tags: [RIGHT_HIP_PROSTHESIS]
+  - pattern: "эндопротезирования тбс"
+    tags: [HIP_PROSTHESIS]
+  - pattern: "эндопротезирован"
+    tags: [HIP_PROSTHESIS]
+
+ambiguous_comment_tags:
+  - "требует внимание"
+
+# Эти labels используются только для анализа/дополнительных экспериментов,
+# а не подмешиваются автоматически в основные quality targets.
+comment_policy: "auxiliary_only"
