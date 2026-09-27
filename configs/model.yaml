@@ -1,0 +1,41 @@
+architecture: resnet18
+
+pretrained: true
+dropout: 0.30
+
+input:
+  image_size: 512
+  channels: 3
+
+outputs:
+  anatomy:
+    classes:
+      - spine
+      - left_hip
+      - right_hip
+  spine:
+    targets:
+      - spine_layout
+      - spine_axis
+      - spine_artifact
+  hip:
+    targets:
+      - hip_position_rotation
+      - hip_roi
+  overall:
+    target: quality_class
+
+training:
+  freeze_backbone_epochs: 3
+  epochs: 25
+  batch_size: 8
+  num_workers: 0
+  head_lr: 0.0005
+  backbone_lr: 0.00001
+  weight_decay: 0.0001
+
+loss:
+  lambda_anatomy: 1.0
+  lambda_spine: 1.0
+  lambda_hip: 1.0
+  lambda_quality: 1.0

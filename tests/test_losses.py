@@ -1,5 +1,5 @@
 import torch
-from hack.app.training.losses import masked_bce_with_logits
+from app.training.losses import masked_bce_with_logits
 
 
 def test_masked_bce_ignores_missing_labels():
