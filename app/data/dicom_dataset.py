@@ -107,10 +107,10 @@ class DXAQualityDataset(Dataset):
             "image_path": str(image_path),
             "study_uid": str(row.get("study_uid", "")),
             "sop_instance_uid": str(row.get("sop_instance_uid", "")),
-            "dicom_metadata": {
-                "manufacturer": dicom_meta.manufacturer,
-                "manufacturer_model": dicom_meta.manufacturer_model,
-                "pixel_spacing": dicom_meta.pixel_spacing,
-                "was_multiframe": dicom_meta.was_multiframe,
+           "dicom_metadata": {
+                "manufacturer": dicom_meta.manufacturer or "",
+                "manufacturer_model": dicom_meta.manufacturer_model or "",
+                "pixel_spacing": tuple(dicom_meta.pixel_spacing) if dicom_meta.pixel_spacing else (0.0, 0.0),
+                "was_multiframe": bool(dicom_meta.was_multiframe),
             },
         }

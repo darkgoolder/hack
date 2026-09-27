@@ -222,3 +222,4 @@ __marimo__/
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !data/manifests/.gitkeep
+/artifacts/*

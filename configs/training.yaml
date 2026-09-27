@@ -1,0 +1,20 @@
+seed: 42
+image_size: 512
+batch_size: 8
+num_workers: 0
+epochs: 25
+freeze_backbone_epochs: 3
+optimizer:
+  name: AdamW
+  head_lr: 0.0005
+  backbone_lr: 0.00001
+  weight_decay: 0.0001
+scheduler:
+  name: ReduceLROnPlateau
+  mode: min
+  factor: 0.5
+  patience: 2
+early_stopping:
+  monitor: val_loss
+  patience: 7
+gradient_clipping_norm: 1.0
